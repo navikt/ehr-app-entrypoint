@@ -1,0 +1,10 @@
+{
+  "APP": "ehr-app-entrypoint",
+  "LIVENESS_PATH": "/_alive",
+  "PROMETHEUS_PATH": "/_metrics",
+  "READINESS_PATH": "/_ready",
+  "TEAM": "helseopplysninger",
+  "PORT": "4343",
+  "CONTEXT_PATH": "/entrypoint",
+  "PROXY_PATH": "/proxy"
+}

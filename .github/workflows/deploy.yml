@@ -1,0 +1,92 @@
+name: Build, push, and deploy
+
+on:
+  push:
+    branches:
+      - '*'
+  pull_request:
+    branches:
+      - main
+  release:
+    types:
+      - created
+
+env:
+  IMAGE: docker.pkg.github.com/${{ github.repository }}/${{ github.event.repository.name }}:${{ github.sha }}
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+      - name: Cache node modules
+        uses: actions/cache@v2
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-cachenodemodules-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-cachenodemodules-
+            ${{ runner.os }}-
+      - name: Install Dependencies
+        run:  npm ci --ignore-scripts --no-optional --prefer-offline --no-audit
+      - name: Run tests
+        run:  npm test
+
+  build:
+    name: Build and push docker image
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+      - name: Cache node modules
+        uses: actions/cache@v2
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-cachenodemodules-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-cachenodemodules-
+            ${{ runner.os }}-
+      - name: Install Dependencies
+        run:  npm ci --ignore-scripts --no-optional --prefer-offline --no-audit
+      - name: Build and publish Docker image
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          docker build . --pull --tag ${IMAGE}
+          echo "$GITHUB_TOKEN" | docker login --username "$GITHUB_REPOSITORY" --password-stdin https://docker.pkg.github.com
+          docker push ${IMAGE}
+
+  # Deployer til Labs-GCP på commits til main
+  deploy-labs-gcp:
+    name: Deploy to nais labs-gcp
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+      - uses: nais/deploy/actions/deploy@v1
+        env:
+          APIKEY: ${{ secrets.NAIS_DEPLOY_APIKEY }}
+          CLUSTER: labs-gcp
+          RESOURCE: .nais/labs-gcp.yaml
+
+  # Deployer til Prod-GCP på "release" fra github
+  deploy-prod-gcp:
+    name: Deploy to nais prod-gcp
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+      - uses: nais/deploy/actions/deploy@v1
+        env:
+          APIKEY: ${{ secrets.NAIS_DEPLOY_APIKEY }}
+          CLUSTER: prod-gcp
+          RESOURCE: .nais/prod-gcp.yaml
+

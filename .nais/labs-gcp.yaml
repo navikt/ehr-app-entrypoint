@@ -1,0 +1,23 @@
+apiVersion: "nais.io/v1alpha1"
+kind: "Application"
+metadata:
+  labels:
+    team: {{TEAM}}
+  name: {{APP}}
+  namespace: {{TEAM}}
+spec:
+  image: {{image}}
+  port: {{PORT}}
+  prometheus:
+    enabled: true
+    path: {{PROMETHEUS_PATH}}
+  liveness:
+    path: {{LIVENESS_PATH}}
+  readiness:
+    path: {{READINESS_PATH}}
+  replicas:
+    min: 1
+    max: 1
+    cpuThresholdPercentage: 75
+  ingresses:
+    - "https://ehr-apps.nav-labs.no{{CONTEXT_PATH}}"

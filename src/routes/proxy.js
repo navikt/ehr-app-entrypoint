@@ -1,59 +1,30 @@
 const vars = require('../vars');
-const axios = require('axios');
 const bodyParser = require('body-parser');
 const storage = require('../utils/mock-storage');
-
-async function forwardRequest(req, targetUrl) {
-  const proxyHeader = storage.get('proxyHeader');
-  const options = {
-    url: targetUrl,
-    method: req.method,
-    params: req.query,
-    headers: {
-      'Accept': 'application/json',
-      'Authorization': proxyHeader ? proxyHeader : 'anonymous',
-    },
-    data: req.body,
-  };
-  const result = await axios(options);
-  return result.data;
-}
-
+const rewriteCapabilityStatement = require('../utils/rewrite-capability-statement');
+const forwardRequest = require('../utils/forward-request');
 const proxyUrl = 'http://localhost:4343/proxy';
+
 /**
  * @param {Application} app
+ * @param {EnvVars} env
  */
 module.exports = (app) => {
   app.use(bodyParser.urlencoded({extended: false}));
   app.get(vars.PROXY_PATH + '/metadata', async (req, res) => {
-    const FHIR_SERVER_R4 = 'https://r4.smarthealthit.org';
-    const targetUrl = req.originalUrl.replace(vars.PROXY_PATH, FHIR_SERVER_R4);
-    const resource = await forwardRequest(req, targetUrl);
-
-    if (resource.resourceType === 'CapabilityStatement') {
-      resource.implementation.url = proxyUrl;
-      resource.rest[0].security.extension = resource.rest[0].security.extension || [];
-      if (!resource.rest[0].security.extension[0]) {
-        resource.rest[0].security.extension.push({
-          'url': 'http://fhir-registry.smarthealthit.org/StructureDefinition/oauth-uris',
-          'extension': [
-            {
-              'url': 'token',
-              'valueUri': proxyUrl + '/auth/token',
-            },
-            {
-              'url': 'authorize',
-              'valueUri': proxyUrl + '/auth/authorize',
-            },
-          ],
-        });
-      }
+    let resource;
+    if (storage.has('CapabilityStatement')) {
+      console.log('Resource delivered from cache', 'CapabilityStatement');
+      resource = await storage.get('CapabilityStatement');
+    } else {
+      const FHIR_SERVER_R4 = 'https://r4.smarthealthit.org';
+      const targetUrl = req.originalUrl.replace(vars.PROXY_PATH, FHIR_SERVER_R4);
+      resource = await forwardRequest(req, targetUrl);
     }
-    res.send(resource);
+    res.send(rewriteCapabilityStatement(resource, proxyUrl));
   });
   app.get(vars.PROXY_PATH + '/auth/authorize', async (req, res) => {
     const {client_id, response_type, scope, redirect_uri, state, aud} = req.query;
-
     const url = new URL(redirect_uri);
     url.searchParams.append('code', '123');
     url.searchParams.append('state', state);
@@ -79,14 +50,20 @@ module.exports = (app) => {
 
   });
   app.all([
-    vars.PROXY_PATH + '/Encounter/*',
-    vars.PROXY_PATH + '/Patient/*',
+    vars.PROXY_PATH + '/:resourceType/:id',
   ], async (req, res) => {
-    const proxyHeader = storage.get('proxyHeader');
+    const {resourceType, id} = req.params;
+    const resourceKey = resourceType + '/' + id;
+    if (storage.has(resourceKey)) {
+      console.log('Resource delivered from cache', resourceKey);
+      return res.send(await storage.get(resourceKey));
+    }
+    console.log(req.params.resourceType);
     const FHIR_SERVER_R4 = 'https://r4.smarthealthit.org';
     const targetUrl = req.originalUrl.replace(vars.PROXY_PATH, FHIR_SERVER_R4);
+    const proxyHeader = storage.get('proxyHeader');
     if (proxyHeader) {
-      const result = await forwardRequest(req, targetUrl);
+      const result = await forwardRequest(req, targetUrl, proxyHeader);
       res.send(result);
     } else {
       res.status(401).send({});

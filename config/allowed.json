@@ -1,0 +1,7 @@
+[
+  {
+    "desc": "Local development environment",
+    "iss": "http://localhost:9009/v/r4/fhir",
+    "prod": false
+  }
+]

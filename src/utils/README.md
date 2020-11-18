@@ -1,0 +1,1 @@
+# Generiske utility-funksjoner

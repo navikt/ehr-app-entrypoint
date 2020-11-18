@@ -5,6 +5,7 @@
   "READINESS_PATH": "/_ready",
   "TEAM": "helseopplysninger",
   "PORT": "4343",
-  "CONTEXT_PATH": "/entrypoint",
+  "LAUNCH_PATH": "/launch",
+  "REDIRECT_URI": "/redirect-uri",
   "PROXY_PATH": "/proxy"
 }
